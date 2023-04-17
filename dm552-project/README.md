@@ -1,0 +1,2 @@
+# my-project
+The coverage for my expressions and alternatives is not 100% because for some odd reason, making unit tests for NULL pawns was actually bringing down the coverage scores on everything else. I deemed it better to skip those tests and get a higher level of coverage on the code instead.

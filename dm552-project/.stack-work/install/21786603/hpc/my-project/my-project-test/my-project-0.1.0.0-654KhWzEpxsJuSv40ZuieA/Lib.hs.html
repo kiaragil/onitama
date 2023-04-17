@@ -1,0 +1,368 @@
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+<style type="text/css">
+span.lineno { color: white; background: #aaaaaa; border-right: solid white 12px }
+span.nottickedoff { background: yellow}
+span.istickedoff { background: white }
+span.tickonlyfalse { margin: -1px; border: 1px solid #f20913; background: #f20913 }
+span.tickonlytrue  { margin: -1px; border: 1px solid #60de51; background: #60de51 }
+span.funcount { font-size: small; color: orange; z-index: 2; position: absolute; right: 20 }
+span.decl { font-weight: bold }
+span.spaces    { background: white }
+</style>
+</head>
+<body>
+<pre>
+<span class="decl"><span class="nottickedoff">never executed</span> <span class="tickonlytrue">always true</span> <span class="tickonlyfalse">always false</span></span>
+</pre>
+<pre>
+<span class="lineno">    1 </span>{-# OPTIONS_GHC -Wno-incomplete-patterns #-}
+<span class="lineno">    2 </span>
+<span class="lineno">    3 </span>module Lib
+<span class="lineno">    4 </span>  ( generateGame
+<span class="lineno">    5 </span>  , simulateGame
+<span class="lineno">    6 </span>  , countGames
+<span class="lineno">    7 </span>  ) where
+<span class="lineno">    8 </span>
+<span class="lineno">    9 </span>import System.IO
+<span class="lineno">   10 </span>import Control.Monad
+<span class="lineno">   11 </span>import Data.List
+<span class="lineno">   12 </span>import Data.Maybe
+<span class="lineno">   13 </span>import Text.Read
+<span class="lineno">   14 </span>import System.Random
+<span class="lineno">   15 </span>
+<span class="lineno">   16 </span>type Card = String
+<span class="lineno">   17 </span>type Position = (Integer, Integer)
+<span class="lineno">   18 </span>type State = ([Card], [Position], [Position], Integer, Bool, Bool)
+<span class="lineno">   19 </span>type Move = (Position, Position, Card)
+<span class="lineno">   20 </span>type PlayerState = ([Card], [Position], Bool)
+<span class="lineno">   21 </span>
+<span class="lineno">   22 </span>--contains all possible card moves for player1 and player2; first half of coordinates belongs to player1, the second is player2
+<span class="lineno">   23 </span>playCards :: Position -&gt; Card -&gt; [Position]
+<span class="lineno">   24 </span><span class="decl"><span class="istickedoff">playCards (x, y) &quot;Tiger&quot; = [(x-1,y),(x+2,y),(x+1,y),(x-2,y)]</span>
+<span class="lineno">   25 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Dragon&quot; = [(x-1,y-1),(x-1,y+1),(x+1,y-2),(x+1,y+2),(x+1,y+1),(x+1,y-1),(x-1,y+2),(x-1,y-2)]</span>
+<span class="lineno">   26 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Frog&quot; = [(x-1,y+1),(x+1,y-1),(x,y-2),(x+1,y-1),(x-1,y+1),(x,y+2)]</span>
+<span class="lineno">   27 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Rabbit&quot; = [(x-1,y-1),(x+1,y+1),(x,y+2),(x+1,y+1),(x-1,y-1),(x,y-2)]</span>
+<span class="lineno">   28 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Crab&quot; = [(x+1,y),(x,y-2),(x,y+2),(x-1,y),(x,y+2),(x,y-2)]</span>
+<span class="lineno">   29 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Elephant&quot; = [(x,y+1),(x,y-1),(x+1,y+1),(x+1,y-1),(x,y-1),(x,y+1),(x-1,y-1),(x-1,y+1)]</span>
+<span class="lineno">   30 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Goose&quot; = [(x,y+1),(x,y-1),(x+1,y-1),(x-1,y+1),(x,y-1),(x,y+1),(x-1,y+1),(x+1,y-1)]</span>
+<span class="lineno">   31 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Rooster&quot; = [(x,y+1),<span class="nottickedoff">(x,y-1)</span>,<span class="nottickedoff">(x-1,y-1)</span>,<span class="nottickedoff">(x+1,y+1)</span>,(x,y-1),(x,y+1),(x+1,y+1),(x-1,y-1)]</span>
+<span class="lineno">   32 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Monkey&quot; = [(x+1,y+1),(x-1,y+1),(x-1,y-1),(x+1,y-1),(x-1,y-1),(x+1,y-1),(x+1,y+1),(x-1,y+1)]</span>
+<span class="lineno">   33 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Mantis&quot; = [(x-1,y),(x+1,y+1),(x+1,y-1),<span class="nottickedoff">(x+1,y)</span>,<span class="nottickedoff">(x-1,y-1)</span>,<span class="nottickedoff">(x-1,y+1)</span>]</span>
+<span class="lineno">   34 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Horse&quot; = [(x-1,y),(x,y-1),(x+1,y),(x+1,y),(x,y+1),(x-1,y)]</span>
+<span class="lineno">   35 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Ox&quot; = [(x-1,y),(x,y+1),(x+1,y),(x+1,y),(x,y-1),(x-1,y)]</span>
+<span class="lineno">   36 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Crane&quot; = [(x+1,y),(x-1,y-1),(x-1,y+1),(x-1,y),(x+1,y+1),(x+1,y-1)]</span>
+<span class="lineno">   37 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Boar&quot; = [(x+1,y),(x,y-1),(x,y+1),(x-1,y),(x,y+1),(x,y-1)]</span>
+<span class="lineno">   38 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Eel&quot; = [(x,y+1),(x-1,y-1),(x+1,y-1),(x,y-1),(x+1,y+1),(x-1,y+1)]</span>
+<span class="lineno">   39 </span><span class="spaces"></span><span class="istickedoff">playCards (x, y) &quot;Cobra&quot; = [(x,y-1),(x+1,y+1),(x-1,y+1),(x,y+1),(x-1,y-1),(x+1,y-1)]</span></span>
+<span class="lineno">   40 </span>
+<span class="lineno">   41 </span>-- all possible super moves
+<span class="lineno">   42 </span>possibleSuperMoves :: (Num a1, Num a2) =&gt; (a1, a2) -&gt; [(a1, a2)]
+<span class="lineno">   43 </span><span class="decl"><span class="istickedoff">possibleSuperMoves (x,y) = [ (x+1,y),(x+1,y-1),(x,y-1),(x-1,y-1),</span>
+<span class="lineno">   44 </span><span class="spaces">                            </span><span class="istickedoff">(x-1,y),(x-1,y+1),(x,y+1),(x+1,y+1) ]</span></span>
+<span class="lineno">   45 </span>
+<span class="lineno">   46 </span>-- card pool used for generateGame
+<span class="lineno">   47 </span>cardsList :: [Card]
+<span class="lineno">   48 </span><span class="decl"><span class="istickedoff">cardsList = [&quot;Tiger&quot;, &quot;Dragon&quot;, &quot;Frog&quot;, &quot;Rabbit&quot;, &quot;Crab&quot;, &quot;Elephant&quot;, &quot;Goose&quot;, &quot;Rooster&quot;,</span>
+<span class="lineno">   49 </span><span class="spaces">                 </span><span class="istickedoff">&quot;Monkey&quot;, &quot;Mantis&quot;, &quot;Horse&quot;, &quot;Ox&quot;, &quot;Crane&quot;, &quot;Boar&quot;, &quot;Eel&quot;, &quot;Cobra&quot;]</span></span>
+<span class="lineno">   50 </span>-- HELPER FUNCTIONS --
+<span class="lineno">   51 </span>
+<span class="lineno">   52 </span>--used for generateGame
+<span class="lineno">   53 </span>randoNo:: (Random a, RandomGen g, Num a) =&gt; a -&gt; g -&gt; (a, g)
+<span class="lineno">   54 </span><span class="decl"><span class="istickedoff">randoNo n = randomR (0,n)</span></span>
+<span class="lineno">   55 </span>
+<span class="lineno">   56 </span>--used for simulateGame
+<span class="lineno">   57 </span>dropSuperPrefix :: String -&gt; String
+<span class="lineno">   58 </span><span class="decl"><span class="istickedoff">dropSuperPrefix card | isPrefixOf &quot;Super &quot; card = drop (length &quot;Super &quot;) card</span>
+<span class="lineno">   59 </span><span class="spaces"></span><span class="istickedoff">dropSuperPrefix card = card</span></span>
+<span class="lineno">   60 </span>
+<span class="lineno">   61 </span>--used for simulateGame
+<span class="lineno">   62 </span>whoseTurn :: State -&gt; [Move]
+<span class="lineno">   63 </span><span class="decl"><span class="istickedoff">whoseTurn ([c1,c2,c3,c4,_], pawns, _, 0, usedSuper, _) = possibleMoves player1State (0)</span>
+<span class="lineno">   64 </span><span class="spaces">  </span><span class="istickedoff">where player1State = ([c1,c2], pawns, usedSuper)</span>
+<span class="lineno">   65 </span><span class="spaces"></span><span class="istickedoff">whoseTurn ([c1,c2,c3,c4,_], _, pawns, 1, _, usedSuper) = possibleMoves player2State (1)</span>
+<span class="lineno">   66 </span><span class="spaces">  </span><span class="istickedoff">where player2State = ([c3,c4], pawns, usedSuper)</span></span>
+<span class="lineno">   67 </span>
+<span class="lineno">   68 </span>  --used for simulateGame
+<span class="lineno">   69 </span>insideBoard :: Position -&gt; Bool
+<span class="lineno">   70 </span><span class="decl"><span class="istickedoff">insideBoard (x, y) = x &gt;= 0 &amp;&amp; x &lt;= 4 &amp;&amp; y &gt;= 0 &amp;&amp; y &lt;= 4</span></span>
+<span class="lineno">   71 </span>
+<span class="lineno">   72 </span>--used for simulateGame
+<span class="lineno">   73 </span>checkWin :: ([Position],[Position]) -&gt; ([Position],[Position])
+<span class="lineno">   74 </span><span class="decl"><span class="istickedoff">checkWin (pawns1, pawns2)</span>
+<span class="lineno">   75 </span><span class="spaces">  </span><span class="istickedoff">| length pawns1 == 1 &amp;&amp; elem (4,2) pawns1 = (<span class="nottickedoff">pawns1</span>,[])</span>
+<span class="lineno">   76 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlyfalse">length pawns2 == 1 &amp;&amp; <span class="nottickedoff">elem (0,2) pawns2</span></span> = <span class="nottickedoff">([],pawns2)</span></span>
+<span class="lineno">   77 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = (pawns1,pawns2)</span></span>
+<span class="lineno">   78 </span>
+<span class="lineno">   79 </span>-- used for generateGame
+<span class="lineno">   80 </span>removeItem :: Eq a =&gt; [a] -&gt; a -&gt; [a]
+<span class="lineno">   81 </span><span class="decl"><span class="istickedoff">removeItem list item = delete item list</span></span>
+<span class="lineno">   82 </span>
+<span class="lineno">   83 </span>-- used for generateGame
+<span class="lineno">   84 </span>nextMove :: State -&gt; StdGen -&gt; Integer -&gt; [Move] -&gt; [Move]
+<span class="lineno">   85 </span><span class="decl"><span class="istickedoff">nextMove state gen movesNeed finalList</span>
+<span class="lineno">   86 </span><span class="spaces">  </span><span class="istickedoff">| ((length finalList == fromIntegral movesNeed) || null pawns1 || null pawns2) = finalList</span>
+<span class="lineno">   87 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = nextMove <span class="nottickedoff">upState</span> <span class="nottickedoff">upGen</span> movesNeed upList</span>
+<span class="lineno">   88 </span><span class="spaces">  </span><span class="istickedoff">where <span class="nottickedoff">upState = applyMove state (last upList)</span></span>
+<span class="lineno">   89 </span><span class="spaces">        </span><span class="istickedoff">upList = finalList ++ upMoves</span>
+<span class="lineno">   90 </span><span class="spaces">        </span><span class="istickedoff">(upMoves, upGen) = generateSomething (whoseTurn state) [] gen 1</span>
+<span class="lineno">   91 </span><span class="spaces">        </span><span class="istickedoff">(cards, pawns1, pawns2, turn, super1, super2) = state</span></span>
+<span class="lineno">   92 </span>
+<span class="lineno">   93 </span>-- used for generateGame
+<span class="lineno">   94 </span>generateSomething :: (Eq a, RandomGen t) =&gt; [a] -&gt; [a] -&gt; t -&gt; Integer -&gt; ([a],t)
+<span class="lineno">   95 </span><span class="decl"><span class="istickedoff">generateSomething fromList toList genNum n</span>
+<span class="lineno">   96 </span><span class="spaces">  </span><span class="istickedoff">| length toList == fromIntegral n = (toList,genNum)</span>
+<span class="lineno">   97 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = generateSomething (removeItem fromList (fromList !! i)) ((fromList !! i) : toList) g n</span>
+<span class="lineno">   98 </span><span class="spaces">  </span><span class="istickedoff">where</span>
+<span class="lineno">   99 </span><span class="spaces">    </span><span class="istickedoff">l = length fromList -1</span>
+<span class="lineno">  100 </span><span class="spaces">    </span><span class="istickedoff">(i,g) = randomR (0,l) genNum</span></span>
+<span class="lineno">  101 </span>
+<span class="lineno">  102 </span>-- used to split playCards moves for player1 and player2
+<span class="lineno">  103 </span>splitList :: [a] -&gt; ([a], [a])
+<span class="lineno">  104 </span><span class="decl"><span class="istickedoff">splitList myList = splitAt ((length myList + 1) `div` 2) myList</span></span>
+<span class="lineno">  105 </span>
+<span class="lineno">  106 </span>-- makes list of all states aka possible games
+<span class="lineno">  107 </span>possibilities :: State -&gt; Integer -&gt; [State] -&gt; [State]
+<span class="lineno">  108 </span><span class="decl"><span class="istickedoff">possibilities state nMoves stateList</span>
+<span class="lineno">  109 </span><span class="spaces">  </span><span class="istickedoff">| nMoves == 0 = stateList ++ [state]</span>
+<span class="lineno">  110 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlyfalse">null pawns1 || null pawns2</span> = <span class="nottickedoff">stateList ++ [state]</span></span>
+<span class="lineno">  111 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = do</span>
+<span class="lineno">  112 </span><span class="spaces">    </span><span class="istickedoff">let moves = whoseTurn state</span>
+<span class="lineno">  113 </span><span class="spaces">    </span><span class="istickedoff">let upState = map (applyMove state) moves</span>
+<span class="lineno">  114 </span><span class="spaces">    </span><span class="istickedoff">concatMap(\upd -&gt; possibilities upd (nMoves-1) stateList) upState</span>
+<span class="lineno">  115 </span><span class="spaces">    </span><span class="istickedoff">where (cards, pawns1, pawns2, turn, super1, super2) = state</span></span>
+<span class="lineno">  116 </span>
+<span class="lineno">  117 </span>-- MOVE FUNCTIONS --
+<span class="lineno">  118 </span>
+<span class="lineno">  119 </span>-- determines moves based on used supers and player turn
+<span class="lineno">  120 </span>possibleMoves :: PlayerState -&gt; Integer -&gt; [Move]
+<span class="lineno">  121 </span><span class="decl"><span class="istickedoff">possibleMoves (cards, pawns, True) 0 = normalMoves</span>
+<span class="lineno">  122 </span><span class="spaces">  </span><span class="istickedoff">where normalMoves = concatMap (cardMoves pawns) cards</span>
+<span class="lineno">  123 </span><span class="spaces"></span><span class="istickedoff">possibleMoves (cards, pawns, False) 0 = normalMoves ++ superMoves pawns cards</span>
+<span class="lineno">  124 </span><span class="spaces">  </span><span class="istickedoff">where normalMoves = concatMap (cardMoves pawns) cards</span>
+<span class="lineno">  125 </span><span class="spaces"></span><span class="istickedoff">possibleMoves (cards, pawns, True) 1 = normalMoves</span>
+<span class="lineno">  126 </span><span class="spaces">  </span><span class="istickedoff">where normalMoves = concatMap (cardMovesP2 pawns) cards</span>
+<span class="lineno">  127 </span><span class="spaces"></span><span class="istickedoff">possibleMoves (cards, pawns, False) 1 = normalMoves ++ superMoves pawns cards</span>
+<span class="lineno">  128 </span><span class="spaces">  </span><span class="istickedoff">where normalMoves = concatMap (cardMovesP2 pawns) cards</span></span>
+<span class="lineno">  129 </span>
+<span class="lineno">  130 </span>-- deals with super moves
+<span class="lineno">  131 </span>superMoves :: [Position] -&gt; [Card] -&gt; [Move]
+<span class="lineno">  132 </span><span class="decl"><span class="istickedoff">superMoves pawns cards =</span>
+<span class="lineno">  133 </span><span class="spaces">  </span><span class="istickedoff">[(pos1, pos2, &quot;Super &quot; ++ card) |</span>
+<span class="lineno">  134 </span><span class="spaces">   </span><span class="istickedoff">pos1 &lt;- pawns,</span>
+<span class="lineno">  135 </span><span class="spaces">   </span><span class="istickedoff">pos2 &lt;- possibleSuperMoves pos1,</span>
+<span class="lineno">  136 </span><span class="spaces">   </span><span class="istickedoff">insideBoard pos2,</span>
+<span class="lineno">  137 </span><span class="spaces">   </span><span class="istickedoff">card &lt;- cards]</span></span>
+<span class="lineno">  138 </span>
+<span class="lineno">  139 </span>-- finds all possible card moves for player1 and determines if they are legal
+<span class="lineno">  140 </span>cardMoves :: [Position] -&gt; Card -&gt; [Move]
+<span class="lineno">  141 </span><span class="decl"><span class="istickedoff">cardMoves pawns card = legalMoves</span>
+<span class="lineno">  142 </span><span class="spaces">  </span><span class="istickedoff">where moves = concatMap (pawnMoves card) pawns</span>
+<span class="lineno">  143 </span><span class="spaces">        </span><span class="istickedoff">legalMoves = filter (\(_, pos2, _) -&gt; notElem pos2 pawns) moves</span></span>
+<span class="lineno">  144 </span>
+<span class="lineno">  145 </span>-- finds all possible card moves for player2 and determines if they are legal
+<span class="lineno">  146 </span>cardMovesP2 :: [Position] -&gt; Card -&gt; [Move]
+<span class="lineno">  147 </span><span class="decl"><span class="istickedoff">cardMovesP2 pawns card = legalMoves</span>
+<span class="lineno">  148 </span><span class="spaces">  </span><span class="istickedoff">where moves = concatMap (pawnMovesP2 card) pawns</span>
+<span class="lineno">  149 </span><span class="spaces">        </span><span class="istickedoff">legalMoves = filter (\(_, pos2, _) -&gt; notElem pos2 pawns) moves</span></span>
+<span class="lineno">  150 </span>
+<span class="lineno">  151 </span>-- all possible pawn moves for player1; checks if they are inside the board
+<span class="lineno">  152 </span>pawnMoves :: Card -&gt; Position -&gt; [Move]
+<span class="lineno">  153 </span><span class="decl"><span class="istickedoff">pawnMoves card pos1 =</span>
+<span class="lineno">  154 </span><span class="spaces">  </span><span class="istickedoff">[(pos1, pos2, card) | pos2 &lt;- halfA, insideBoard pos2]</span>
+<span class="lineno">  155 </span><span class="spaces">  </span><span class="istickedoff">where (halfA,halfB) = splitList (playCards pos1 card)</span></span>
+<span class="lineno">  156 </span>
+<span class="lineno">  157 </span> -- all possible pawn moves for player2; checks if they are inside the board
+<span class="lineno">  158 </span>pawnMovesP2 :: Card -&gt; Position -&gt; [Move]
+<span class="lineno">  159 </span><span class="decl"><span class="istickedoff">pawnMovesP2 card pos1 =</span>
+<span class="lineno">  160 </span><span class="spaces">    </span><span class="istickedoff">[(pos1, pos2, card) | pos2 &lt;- halfB, insideBoard pos2]</span>
+<span class="lineno">  161 </span><span class="spaces">    </span><span class="istickedoff">where (halfA,halfB) = splitList (playCards pos1 card)</span></span>
+<span class="lineno">  162 </span>
+<span class="lineno">  163 </span>-- applies given move to the current state and updates the state
+<span class="lineno">  164 </span>applyMove :: State -&gt; Move -&gt; State
+<span class="lineno">  165 </span><span class="decl"><span class="istickedoff">applyMove state move = newState</span>
+<span class="lineno">  166 </span><span class="spaces">  </span><span class="istickedoff">where (cards, pawns1, pawns2, turn, super1, super2) = state</span>
+<span class="lineno">  167 </span><span class="spaces">        </span><span class="istickedoff">(pos1, pos2, card) = move</span>
+<span class="lineno">  168 </span><span class="spaces">        </span><span class="istickedoff">newCards = applyCardMove turn cards (dropSuperPrefix card)</span>
+<span class="lineno">  169 </span><span class="spaces">        </span><span class="istickedoff">(newPawns1, newPawns2) = applyPawnMove turn pawns1 pawns2 pos1 pos2</span>
+<span class="lineno">  170 </span><span class="spaces">        </span><span class="istickedoff">(finalPawns1, finalPawns2) = checkWin (newPawns1, newPawns2)</span>
+<span class="lineno">  171 </span><span class="spaces">        </span><span class="istickedoff">(newUsedSuper1, newUsedSuper2) = applySuperMove turn super1 super2 card</span>
+<span class="lineno">  172 </span><span class="spaces">        </span><span class="istickedoff">newTurn = mod (turn+1) 2</span>
+<span class="lineno">  173 </span><span class="spaces">        </span><span class="istickedoff">newState = (newCards, finalPawns1, finalPawns2, newTurn, newUsedSuper1, newUsedSuper2)</span></span>
+<span class="lineno">  174 </span>
+<span class="lineno">  175 </span>-- applies card moves and rearranges the cards appropriately
+<span class="lineno">  176 </span>applyCardMove :: Integer -&gt; [Card] -&gt; Card -&gt; [Card]
+<span class="lineno">  177 </span><span class="decl"><span class="istickedoff">applyCardMove 0 [c1,c2,c3,c4,c5] card</span>
+<span class="lineno">  178 </span><span class="spaces">  </span><span class="istickedoff">| card == c1 = sort [c2,c5] ++ [c3,c4,card]</span>
+<span class="lineno">  179 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">card == c2</span> = sort [c1,c5] ++ [c3,c4,card]</span>
+<span class="lineno">  180 </span><span class="spaces"></span><span class="istickedoff">applyCardMove 1 [c1,c2,c3,c4,c5] card</span>
+<span class="lineno">  181 </span><span class="spaces">  </span><span class="istickedoff">| card == c3 = [c1,c2] ++ sort [c4,c5] ++ [card]</span>
+<span class="lineno">  182 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">card == c4</span> = [c1,c2] ++ sort [c3,c5] ++ [card]</span></span>
+<span class="lineno">  183 </span>
+<span class="lineno">  184 </span>-- applies supermoves and changes super status appropriately
+<span class="lineno">  185 </span>applySuperMove :: (Eq a, Num a) =&gt; a -&gt; Bool -&gt; Bool -&gt; String -&gt; (Bool, Bool)
+<span class="lineno">  186 </span><span class="decl"><span class="istickedoff">applySuperMove turn super1 super2 card</span>
+<span class="lineno">  187 </span><span class="spaces">  </span><span class="istickedoff">| &quot;Super &quot; `isPrefixOf` card =</span>
+<span class="lineno">  188 </span><span class="spaces">    </span><span class="istickedoff">case (turn, super1, super2) of</span>
+<span class="lineno">  189 </span><span class="spaces">      </span><span class="istickedoff">(0, False, _) -&gt; (True, super2)</span>
+<span class="lineno">  190 </span><span class="spaces">      </span><span class="istickedoff">(1, _, False) -&gt; (super1, True)</span>
+<span class="lineno">  191 </span><span class="spaces"></span><span class="istickedoff">applySuperMove _ super1 super2 _ = (super1, super2)</span></span>
+<span class="lineno">  192 </span>
+<span class="lineno">  193 </span>applyPawnMove :: Integer -&gt; [Position] -&gt; [Position] -&gt; Position -&gt; Position -&gt; ([Position], [Position])
+<span class="lineno">  194 </span><span class="decl"><span class="istickedoff">applyPawnMove 0 pawns1 pawns2 pos1 pos2 = (playerPawns, opponentPawns)</span>
+<span class="lineno">  195 </span><span class="spaces">  </span><span class="istickedoff">where (playerPawns, opponentPawns) = applyPawnMove1 pawns1 pawns2 temple0 pos1 pos2</span>
+<span class="lineno">  196 </span><span class="spaces">        </span><span class="istickedoff">temple0 = (2, 4)</span>
+<span class="lineno">  197 </span><span class="spaces"></span><span class="istickedoff">applyPawnMove 1 pawns1 pawns2 pos1 pos2 = (opponentPawns, playerPawns)</span>
+<span class="lineno">  198 </span><span class="spaces">  </span><span class="istickedoff">where (playerPawns, opponentPawns) = applyPawnMove1 pawns2 pawns1 temple1 pos1 pos2</span>
+<span class="lineno">  199 </span><span class="spaces">        </span><span class="istickedoff">temple1 = (2, 0)</span></span>
+<span class="lineno">  200 </span>
+<span class="lineno">  201 </span><span class="decl"><span class="istickedoff">applyPawnMove1 (playerMaster:playerPawns) (opponentMaster:opponentPawns) temple pos1 pos2</span>
+<span class="lineno">  202 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlyfalse">playerMaster == temple</span> = <span class="nottickedoff">(temple:playerPawns, [])</span></span>
+<span class="lineno">  203 </span><span class="spaces">  </span><span class="istickedoff">| pos2 == opponentMaster = (movePawn (playerMaster:playerPawns) pos1 pos2, [])</span>
+<span class="lineno">  204 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = (movePawn (playerMaster:playerPawns) pos1 pos2, opponentMaster:(filter (/= pos2) opponentPawns))</span></span>
+<span class="lineno">  205 </span>
+<span class="lineno">  206 </span>-- adjusts pawns after move
+<span class="lineno">  207 </span>movePawn :: [Position] -&gt; Position -&gt; Position -&gt; [Position]
+<span class="lineno">  208 </span><span class="decl"><span class="istickedoff">movePawn (master:pawns) pos1 pos2</span>
+<span class="lineno">  209 </span><span class="spaces">  </span><span class="istickedoff">| master == pos1 = pos2:pawns</span>
+<span class="lineno">  210 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = master:(sort $ map replacePawn pawns)</span>
+<span class="lineno">  211 </span><span class="spaces">      </span><span class="istickedoff">where replacePawn = \p -&gt; if p == pos1 then pos2 else p</span></span>
+<span class="lineno">  212 </span>
+<span class="lineno">  213 </span>-- FILEPATH HELPER FUNCTIONS --
+<span class="lineno">  214 </span>
+<span class="lineno">  215 </span>-- checks for possible move constructor
+<span class="lineno">  216 </span>maybeMove :: String -&gt; Maybe ((Integer, Integer), (Integer, Integer), String)
+<span class="lineno">  217 </span><span class="decl"><span class="istickedoff">maybeMove x = readMaybe x :: Maybe ((Integer, Integer), (Integer, Integer), String)</span></span>
+<span class="lineno">  218 </span>
+<span class="lineno">  219 </span>-- converts to state constructor
+<span class="lineno">  220 </span>convertState ::  Maybe ([String], [(Integer,Integer)], [(Integer, Integer)], Integer, Bool, Bool) -&gt; State
+<span class="lineno">  221 </span><span class="decl"><span class="istickedoff">convertState x = (cards, pawns1, pawns2, turn, super1, super2)</span>
+<span class="lineno">  222 </span><span class="spaces">  </span><span class="istickedoff">where (cards, pawns1, pawns2, turn, super1, super2) = fromJust x</span></span>
+<span class="lineno">  223 </span>
+<span class="lineno">  224 </span>-- converts to move constructor
+<span class="lineno">  225 </span>convertMove :: Maybe ((Integer,Integer),(Integer,Integer), String) -&gt; Move
+<span class="lineno">  226 </span><span class="decl"><span class="istickedoff">convertMove x = (from, to, card)</span>
+<span class="lineno">  227 </span><span class="spaces">  </span><span class="istickedoff">where (from, to, card) = fromJust x</span></span>
+<span class="lineno">  228 </span>
+<span class="lineno">  229 </span>invalidState :: State -&gt; Bool
+<span class="lineno">  230 </span><span class="decl"><span class="istickedoff">invalidState (cards, pawns1, pawns2, turn, super1, super2)</span>
+<span class="lineno">  231 </span><span class="spaces">  </span><span class="istickedoff">| length cards /= 5 = True</span>
+<span class="lineno">  232 </span><span class="spaces">  </span><span class="istickedoff">| null pawns1 || length pawns1 &gt; 5 = True</span>
+<span class="lineno">  233 </span><span class="spaces">  </span><span class="istickedoff">| null pawns2 || length pawns2 &gt; 5 = True</span>
+<span class="lineno">  234 </span><span class="spaces">  </span><span class="istickedoff">| not (null (intersect pawns1 pawns2)) = True</span>
+<span class="lineno">  235 </span><span class="spaces">  </span><span class="istickedoff">| (any ((==False) . (`elem` cardsList))) cards = True</span>
+<span class="lineno">  236 </span><span class="spaces">  </span><span class="istickedoff">| (any ((==False) . insideBoard)) pawns1 = True</span>
+<span class="lineno">  237 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = False</span></span>
+<span class="lineno">  238 </span>
+<span class="lineno">  239 </span>-- checks for instances of an invalidformat
+<span class="lineno">  240 </span>invalidFormat :: State -&gt; Bool
+<span class="lineno">  241 </span><span class="decl"><span class="istickedoff">invalidFormat state</span>
+<span class="lineno">  242 </span><span class="spaces">  </span><span class="istickedoff">| cardsNotSorted state = True</span>
+<span class="lineno">  243 </span><span class="spaces">  </span><span class="istickedoff">| pawnsNotSorted state = True</span>
+<span class="lineno">  244 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = False</span></span>
+<span class="lineno">  245 </span>
+<span class="lineno">  246 </span>-- checks if cards are sorted appropriately
+<span class="lineno">  247 </span>cardsNotSorted :: State -&gt; Bool
+<span class="lineno">  248 </span><span class="decl"><span class="istickedoff">cardsNotSorted (cards, pawns1, pawns2, turn, super1, super2) =</span>
+<span class="lineno">  249 </span><span class="spaces">  </span><span class="istickedoff">cards /= sortedCards</span>
+<span class="lineno">  250 </span><span class="spaces">  </span><span class="istickedoff">where [c1,c2,c3,c4,c5] = cards</span>
+<span class="lineno">  251 </span><span class="spaces">        </span><span class="istickedoff">sortedCards = sort[c1,c2] ++ sort[c3,c4] ++ [c5]</span></span>
+<span class="lineno">  252 </span>
+<span class="lineno">  253 </span>-- sorts cards according to assignment requirements
+<span class="lineno">  254 </span>sortCards :: [Card] -&gt; [Card]
+<span class="lineno">  255 </span><span class="decl"><span class="istickedoff">sortCards [c1,c2,c3,c4,c5] = sort[c1,c2] ++ sort[c3,c4] ++ [c5]</span></span>
+<span class="lineno">  256 </span>
+<span class="lineno">  257 </span>-- checks if pawns are sorted appropriately
+<span class="lineno">  258 </span>pawnsNotSorted :: State -&gt; Bool
+<span class="lineno">  259 </span><span class="decl"><span class="istickedoff">pawnsNotSorted (cards, pawns1, pawns2, turn, super1, super2)</span>
+<span class="lineno">  260 </span><span class="spaces">  </span><span class="istickedoff">| pawns1 /= head pawns1 : (sort . tail) pawns1 = True</span>
+<span class="lineno">  261 </span><span class="spaces">  </span><span class="istickedoff">| pawns2 /= head pawns2 : (sort . tail) pawns2 = True</span>
+<span class="lineno">  262 </span><span class="spaces">  </span><span class="istickedoff">| <span class="tickonlytrue">otherwise</span> = False</span></span>
+<span class="lineno">  263 </span>
+<span class="lineno">  264 </span>-- DRIVER FUNCTIONS --
+<span class="lineno">  265 </span>
+<span class="lineno">  266 </span>simulateGameAux :: State -&gt; [Move] -&gt; String
+<span class="lineno">  267 </span><span class="decl"><span class="istickedoff">simulateGameAux state [] = show state</span>
+<span class="lineno">  268 </span><span class="spaces"></span><span class="istickedoff">simulateGameAux state (m:ms) =</span>
+<span class="lineno">  269 </span><span class="spaces">  </span><span class="istickedoff">case whoseTurn state of</span>
+<span class="lineno">  270 </span><span class="spaces">    </span><span class="istickedoff">moves | elem m moves -&gt; simulateGameAux (applyMove state m) ms</span>
+<span class="lineno">  271 </span><span class="spaces">    </span><span class="istickedoff">_ -&gt; &quot;InvalidMove&quot; ++ &quot; &quot; ++ show m</span></span>
+<span class="lineno">  272 </span>
+<span class="lineno">  273 </span>
+<span class="lineno">  274 </span>countGamesAux :: State -&gt; Integer -&gt; String
+<span class="lineno">  275 </span><span class="decl"><span class="istickedoff">countGamesAux state nMoves = show (length games, p1wins, p2wins)</span>
+<span class="lineno">  276 </span><span class="spaces">  </span><span class="istickedoff">where games = possibilities state nMoves [] --</span>
+<span class="lineno">  277 </span><span class="spaces">        </span><span class="istickedoff">p1wins = length $ filter (\(_,_,pawns2,_,_,_)-&gt; null pawns2) games -- filters player1 wins from list of states</span>
+<span class="lineno">  278 </span><span class="spaces">        </span><span class="istickedoff">p2wins =  length $ filter (\(_,pawns1,_,_,_,_)-&gt; null pawns1) games</span></span> -- filters player2 wins from lists of states
+<span class="lineno">  279 </span>
+<span class="lineno">  280 </span>simulateGame :: FilePath -&gt; IO String
+<span class="lineno">  281 </span><span class="decl"><span class="istickedoff">simulateGame path = do</span>
+<span class="lineno">  282 </span><span class="spaces">  </span><span class="istickedoff">file &lt;- readFile path</span>
+<span class="lineno">  283 </span><span class="spaces">  </span><span class="istickedoff">if file == &quot;&quot; then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  284 </span><span class="spaces">    </span><span class="istickedoff">else do</span>
+<span class="lineno">  285 </span><span class="spaces">    </span><span class="istickedoff">let stringArray = lines file</span>
+<span class="lineno">  286 </span><span class="spaces">    </span><span class="istickedoff">let fileState = readMaybe (head stringArray) :: Maybe ([String], [(Integer,Integer)], [(Integer, Integer)], Integer, Bool, Bool)</span>
+<span class="lineno">  287 </span><span class="spaces">    </span><span class="istickedoff">let realState = convertState fileState</span>
+<span class="lineno">  288 </span><span class="spaces">    </span><span class="istickedoff">if isNothing fileState then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  289 </span><span class="spaces">    </span><span class="istickedoff">else do</span>
+<span class="lineno">  290 </span><span class="spaces">      </span><span class="istickedoff">if invalidState realState then return &quot;InvalidState&quot;</span>
+<span class="lineno">  291 </span><span class="spaces">      </span><span class="istickedoff">else do</span>
+<span class="lineno">  292 </span><span class="spaces">        </span><span class="istickedoff">if invalidFormat realState then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  293 </span><span class="spaces">        </span><span class="istickedoff">else do</span>
+<span class="lineno">  294 </span><span class="spaces">          </span><span class="istickedoff">let listofMaybeMoves = map maybeMove (tail stringArray)</span>
+<span class="lineno">  295 </span><span class="spaces">          </span><span class="istickedoff">if any isNothing listofMaybeMoves then return (show realState)</span>
+<span class="lineno">  296 </span><span class="spaces">          </span><span class="istickedoff">else do</span>
+<span class="lineno">  297 </span><span class="spaces">            </span><span class="istickedoff">let listOfMoves = map convertMove listofMaybeMoves</span>
+<span class="lineno">  298 </span><span class="spaces">            </span><span class="istickedoff">return (simulateGameAux realState listOfMoves)</span></span>
+<span class="lineno">  299 </span>
+<span class="lineno">  300 </span>generateGame :: Integer -&gt; Integer -&gt; String
+<span class="lineno">  301 </span><span class="decl"><span class="istickedoff">generateGame s n = do</span>
+<span class="lineno">  302 </span><span class="spaces">  </span><span class="istickedoff">--random cards, sorted</span>
+<span class="lineno">  303 </span><span class="spaces">  </span><span class="istickedoff">let rando = mkStdGen (fromIntegral s)</span>
+<span class="lineno">  304 </span><span class="spaces">  </span><span class="istickedoff">let (cards, genNum) = generateSomething cardsList [] rando 5</span>
+<span class="lineno">  305 </span><span class="spaces">  </span><span class="istickedoff">let sortedCards = sortCards cards</span>
+<span class="lineno">  306 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  307 </span><span class="spaces">  </span><span class="istickedoff">-- default pawn positions and supers, turn is random</span>
+<span class="lineno">  308 </span><span class="spaces">  </span><span class="istickedoff">let pawns1 = [(0,2),(0,0),(0,1),(0,3),(0,4)]</span>
+<span class="lineno">  309 </span><span class="spaces">  </span><span class="istickedoff">let pawns2 = [(4,2),(4,0),(4,1),(4,3),(4,4)]</span>
+<span class="lineno">  310 </span><span class="spaces">  </span><span class="istickedoff">let (turn, genNum2) = randoNo 1 genNum :: (Integer, StdGen)</span>
+<span class="lineno">  311 </span><span class="spaces">  </span><span class="istickedoff">let super1 = False</span>
+<span class="lineno">  312 </span><span class="spaces">  </span><span class="istickedoff">let super2 = False</span>
+<span class="lineno">  313 </span><span class="spaces">  </span><span class="istickedoff">let genState = (sortedCards, pawns1, pawns2, turn, super1, super2)</span>
+<span class="lineno">  314 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  315 </span><span class="spaces">  </span><span class="istickedoff">-- converts state to pass in nextMove and whoseTurn</span>
+<span class="lineno">  316 </span><span class="spaces">  </span><span class="istickedoff">let stringState = lines (show genState)</span>
+<span class="lineno">  317 </span><span class="spaces">  </span><span class="istickedoff">let realState = convertState (readMaybe (head stringState))</span>
+<span class="lineno">  318 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  319 </span><span class="spaces">  </span><span class="istickedoff">-- generates moves list based on the generated state</span>
+<span class="lineno">  320 </span><span class="spaces">  </span><span class="istickedoff">let genMoves = nextMove realState genNum2 n []</span>
+<span class="lineno">  321 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  322 </span><span class="spaces">  </span><span class="istickedoff">-- game output; lists inital state and possible moves for that inital state</span>
+<span class="lineno">  323 </span><span class="spaces">  </span><span class="istickedoff">let genGame = show genState : map show genMoves</span>
+<span class="lineno">  324 </span><span class="spaces"></span><span class="istickedoff"></span>
+<span class="lineno">  325 </span><span class="spaces">  </span><span class="istickedoff">unlines genGame</span></span>
+<span class="lineno">  326 </span>
+<span class="lineno">  327 </span>countGames :: Integer -&gt; FilePath -&gt; IO String
+<span class="lineno">  328 </span><span class="decl"><span class="istickedoff">countGames n path = do</span>
+<span class="lineno">  329 </span><span class="spaces">  </span><span class="istickedoff">file &lt;- readFile path</span>
+<span class="lineno">  330 </span><span class="spaces">  </span><span class="istickedoff">if null file then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  331 </span><span class="spaces">  </span><span class="istickedoff">else do</span>
+<span class="lineno">  332 </span><span class="spaces">    </span><span class="istickedoff">let stringArray = lines file</span>
+<span class="lineno">  333 </span><span class="spaces">    </span><span class="istickedoff">let fileState = readMaybe (head stringArray) :: Maybe ([String], [(Integer,Integer)], [(Integer, Integer)], Integer, Bool, Bool)</span>
+<span class="lineno">  334 </span><span class="spaces">    </span><span class="istickedoff">let realState = convertState fileState</span>
+<span class="lineno">  335 </span><span class="spaces">    </span><span class="istickedoff">if isNothing fileState then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  336 </span><span class="spaces">    </span><span class="istickedoff">else do</span>
+<span class="lineno">  337 </span><span class="spaces">      </span><span class="istickedoff">if invalidState realState then return &quot;InvalidState&quot;</span>
+<span class="lineno">  338 </span><span class="spaces">      </span><span class="istickedoff">else do</span>
+<span class="lineno">  339 </span><span class="spaces">        </span><span class="istickedoff">if invalidFormat realState then return &quot;InvalidFormat&quot;</span>
+<span class="lineno">  340 </span><span class="spaces">        </span><span class="istickedoff">else do</span>
+<span class="lineno">  341 </span><span class="spaces">          </span><span class="istickedoff">return $ countGamesAux realState n</span></span>
+<span class="lineno">  342 </span>
+<span class="lineno">  343 </span>
+<span class="lineno">  344 </span>
+<span class="lineno">  345 </span>
+
+</pre>
+</body>
+</html>
